@@ -3,8 +3,27 @@ import { DEFAULT_RESPONSE, type CapturedRequest, type EndpointMeta } from './typ
 
 /* ------------------------------------------------------------------ config */
 
-export const RETENTION_SECONDS = Number(process.env.WEBHOOK_RETENTION_SECONDS ?? 2_592_000); // 30 days
-export const MAX_REQUESTS = Number(process.env.WEBHOOK_MAX_REQUESTS ?? 200);
+/**
+ * Read a positive integer from the environment, falling back on anything else.
+ *
+ * `??` only guards null/undefined, and `Number('')` is 0 — so a variable that is
+ * *present but blank* (exactly what a hosting dashboard produces when a key is
+ * added with an empty value) used to yield 0. That made Redis reject every
+ * write with `ERR invalid expire time`, since `EX 0` is not a legal TTL. Warn
+ * rather than fall back silently: a bad value here is a config mistake worth
+ * seeing in the logs, and silence is what made it expensive to diagnose.
+ */
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (Number.isInteger(n) && n > 0) return n;
+  console.warn(`[webhook-inbox] ${name}="${raw}" is not a positive integer; using ${fallback}.`);
+  return fallback;
+}
+
+export const RETENTION_SECONDS = envInt('WEBHOOK_RETENTION_SECONDS', 2_592_000); // 30 days
+export const MAX_REQUESTS = envInt('WEBHOOK_MAX_REQUESTS', 200);
 /** Cap on stored body size. Larger bodies are truncated with a flag. */
 export const MAX_BODY_BYTES = 96 * 1024;
 
