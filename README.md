@@ -66,7 +66,11 @@ to change — Vercel detects Next.js.
 
 In your Vercel project: **Storage → Marketplace → Upstash → Redis → Create**.
 
-Vercel injects `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` automatically.
+Vercel injects the credentials automatically. Depending on how the store was
+created they arrive either as `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+or, from the marketplace integration, prefixed with the store name
+(`WEBHOOK_INBOX_KV_REST_API_URL` / `WEBHOOK_INBOX_KV_REST_API_TOKEN`). Both are
+detected — nothing to rename.
 Redeploy once and you are done. The free tier is comfortably enough for personal
 testing (see the note on cost below).
 

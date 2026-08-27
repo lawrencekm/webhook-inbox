@@ -30,10 +30,39 @@ export interface Store {
 
 /* -- Redis ---------------------------------------------------------------- */
 
+/**
+ * Resolve Upstash REST credentials.
+ *
+ * Vercel's Upstash marketplace integration prefixes every variable it injects
+ * with the store's name (`WEBHOOK_INBOX_KV_REST_API_URL`), so no fixed name is
+ * reliable. Check the canonical pairs first, then fall back to any
+ * `<PREFIX>KV_REST_API_URL` that has a matching `<PREFIX>KV_REST_API_TOKEN`.
+ * Pairing on the shared prefix keeps a URL and token from different stores from
+ * being combined; read-only tokens end in `_READ_ONLY_TOKEN` and never match.
+ */
+function redisCredentials(): { url: string; token: string } | null {
+  const env = process.env;
+  const canonical: ReadonlyArray<readonly [string | undefined, string | undefined]> = [
+    [env.UPSTASH_REDIS_REST_URL, env.UPSTASH_REDIS_REST_TOKEN],
+    [env.KV_REST_API_URL, env.KV_REST_API_TOKEN],
+  ];
+  for (const [url, token] of canonical) if (url && token) return { url, token };
+
+  const SUFFIX = 'KV_REST_API_URL';
+  // Sorted so a project with several stores resolves to the same one every boot.
+  for (const key of Object.keys(env).sort()) {
+    if (!key.endsWith(SUFFIX)) continue;
+    const url = env[key];
+    const token = env[`${key.slice(0, -SUFFIX.length)}KV_REST_API_TOKEN`];
+    if (url && token) return { url, token };
+  }
+  return null;
+}
+
 function redisClient(): Redis | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
+  const creds = redisCredentials();
+  if (!creds) return null;
+  const { url, token } = creds;
   // Deserialization is handled here rather than by the client so that the exact
   // string we pushed is the exact string we can LREM later.
   return new Redis({ url, token, automaticDeserialization: false });
@@ -189,7 +218,8 @@ export function getStore(): Store {
       console.warn(
         '[webhook-inbox] No Upstash Redis credentials found. Falling back to an in-memory ' +
           'store — data will NOT persist across serverless invocations. Set ' +
-          'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN.',
+          'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN, or let the Vercel ' +
+          'Upstash integration inject its <STORE>_KV_REST_API_URL/_TOKEN pair.',
       );
     }
     cached = new MemoryStore();
